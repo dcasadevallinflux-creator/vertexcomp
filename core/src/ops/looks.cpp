@@ -1,6 +1,8 @@
 // Vignette, lens flare, radial lens distortion and channel-based edge drawing.
 #include "common.h"
 
+#include <deque>
+
 namespace vc::ops {
 namespace {
 
@@ -246,38 +248,73 @@ public:
         int left = -(width - 1) / 2, right = width / 2;
         std::string inputChannel = p.s("channel");
         std::string outputChannel = p.s("output");
-        Box need = roi.grow(std::max(std::abs(left), std::abs(right)) + 1,
-                            std::max(std::abs(left), std::abs(right)) + 1);
+        int radius = std::max(std::abs(left), std::abs(right));
+        Box gradientBox = roi.grow(radius, radius);
+        Box need = gradientBox.grow(1, 1);
         ChannelList needed = chans;
         needed.push_back(inputChannel);
         ImagePtr in = ev.input(0, need, sortedChannels(needed));
         auto out = copyOf(*in, roi, chans);
-        std::vector<float> edge(size_t(roi.w()) * roi.h());
-        const double threshold = std::max(0.0, p.f("threshold"));
-        ev.parallelRows(roi, [&](int y) {
-            for (int x = roi.x0; x < roi.x1; ++x) {
-                float strongest = 0.0f;
-                for (int oy = left; oy <= right; ++oy)
-                    for (int ox = left; ox <= right; ++ox) {
-                        int px = x + ox, py = y + oy;
-                        float gx = -channelAt(*in, inputChannel, px - 1, py - 1) +
-                                   channelAt(*in, inputChannel, px + 1, py - 1) -
-                                   2 * channelAt(*in, inputChannel, px - 1, py) +
-                                   2 * channelAt(*in, inputChannel, px + 1, py) -
-                                   channelAt(*in, inputChannel, px - 1, py + 1) +
-                                   channelAt(*in, inputChannel, px + 1, py + 1);
-                        float gy = -channelAt(*in, inputChannel, px - 1, py - 1) -
-                                   2 * channelAt(*in, inputChannel, px, py - 1) -
-                                   channelAt(*in, inputChannel, px + 1, py - 1) +
-                                   channelAt(*in, inputChannel, px - 1, py + 1) +
-                                   2 * channelAt(*in, inputChannel, px, py + 1) +
-                                   channelAt(*in, inputChannel, px + 1, py + 1);
-                        strongest = std::max(strongest, float(std::hypot(gx, gy) / 4.0));
-                    }
-                float alpha = clamp01(float((strongest - threshold) / std::max(1e-6, 1.0 - threshold)));
-                edge[size_t(y - roi.y0) * roi.w() + x - roi.x0] = alpha * clamp01(float(p.f("opacity")));
+        std::vector<float> gradient(size_t(gradientBox.w()) * gradientBox.h());
+        ev.parallelRows(gradientBox, [&](int y) {
+            for (int x = gradientBox.x0; x < gradientBox.x1; ++x) {
+                float gx = -channelAt(*in, inputChannel, x - 1, y - 1) +
+                           channelAt(*in, inputChannel, x + 1, y - 1) -
+                           2 * channelAt(*in, inputChannel, x - 1, y) +
+                           2 * channelAt(*in, inputChannel, x + 1, y) -
+                           channelAt(*in, inputChannel, x - 1, y + 1) +
+                           channelAt(*in, inputChannel, x + 1, y + 1);
+                float gy = -channelAt(*in, inputChannel, x - 1, y - 1) -
+                           2 * channelAt(*in, inputChannel, x, y - 1) -
+                           channelAt(*in, inputChannel, x + 1, y - 1) +
+                           channelAt(*in, inputChannel, x - 1, y + 1) +
+                           2 * channelAt(*in, inputChannel, x, y + 1) +
+                           channelAt(*in, inputChannel, x + 1, y + 1);
+                gradient[size_t(y - gradientBox.y0) * gradientBox.w() + x - gradientBox.x0] =
+                    float(std::hypot(gx, gy) / 4.0);
             }
         });
+        std::vector<float> horizontal(size_t(roi.w()) * gradientBox.h());
+        ev.parallelRows(gradientBox, [&](int y) {
+            std::deque<int> window;
+            int next = gradientBox.x0;
+            const float* row = gradient.data() + size_t(y - gradientBox.y0) * gradientBox.w();
+            float* dst = horizontal.data() + size_t(y - gradientBox.y0) * roi.w();
+            for (int x = roi.x0; x < roi.x1; ++x) {
+                const int lo = x + left, hi = x + right;
+                while (next <= hi) {
+                    float v = row[next - gradientBox.x0];
+                    while (!window.empty() && row[window.back() - gradientBox.x0] <= v) window.pop_back();
+                    window.push_back(next++);
+                }
+                while (!window.empty() && window.front() < lo) window.pop_front();
+                dst[x - roi.x0] = window.empty() ? 0.0f : row[window.front() - gradientBox.x0];
+            }
+        });
+        std::vector<float> edge(size_t(roi.w()) * roi.h());
+        for (int x = roi.x0; x < roi.x1; ++x) {
+            std::deque<int> window;
+            int next = gradientBox.y0;
+            for (int y = roi.y0; y < roi.y1; ++y) {
+                const int lo = y + left, hi = y + right;
+                while (next <= hi) {
+                    float v = horizontal[size_t(next - gradientBox.y0) * roi.w() + x - roi.x0];
+                    while (!window.empty()) {
+                        float back = horizontal[size_t(window.back() - gradientBox.y0) * roi.w() + x - roi.x0];
+                        if (back > v) break;
+                        window.pop_back();
+                    }
+                    window.push_back(next++);
+                }
+                while (!window.empty() && window.front() < lo) window.pop_front();
+                edge[size_t(y - roi.y0) * roi.w() + x - roi.x0] =
+                    window.empty() ? 0.0f : horizontal[size_t(window.front() - gradientBox.y0) * roi.w() + x - roi.x0];
+            }
+        }
+        const double threshold = std::max(0.0, p.f("threshold"));
+        const float opacity = clamp01(float(p.f("opacity")));
+        for (float& value : edge)
+            value = clamp01(float((value - threshold) / std::max(1e-6, 1.0 - threshold))) * opacity;
         std::vector<std::string> changed;
         auto addChanged = [&](const std::string& channel) {
             if (std::find(changed.begin(), changed.end(), channel) == changed.end()) changed.push_back(channel);

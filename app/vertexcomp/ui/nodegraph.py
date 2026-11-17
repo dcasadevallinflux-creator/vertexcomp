@@ -270,9 +270,9 @@ class BackdropItem(QGraphicsItem):
         self.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable | QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
                       QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
         self.setZValue(-1 if not self.bd.note else 3)
-        self.setPos(self.bd.x, self.bd.y)
         self._resize = None
         self._carry = []
+        self.setPos(self.bd.x, self.bd.y)
 
     def boundingRect(self):
         return QRectF(0, 0, self.bd.w, 24 if self.bd.group and self.bd.collapsed else self.bd.h)

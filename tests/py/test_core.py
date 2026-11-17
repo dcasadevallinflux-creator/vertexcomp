@@ -130,7 +130,7 @@ def test_new_image_nodes(g, tmp_path):
     vignette.set("amount", 1.0)
     vignette.set("color", [0.0, 0.0, 0.0])
     result, _, _ = full(eng, vignette)
-    assert result[1, h // 2, w // 2] < result[1, 0, 0]
+    assert result[1, h // 2, w // 2] > result[1, 0, 0]
 
     flare_source = np.zeros((4, h, w), np.float32)
     flare_source[0, h // 2, w // 2] = 1.0
