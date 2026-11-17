@@ -240,7 +240,10 @@ class Project:
             n = created.get(nd["name"])
             if n is None:
                 continue
-            for slot, src in enumerate(nd.get("inputs", [])):
+            inputs = list(nd.get("inputs", []))
+            if n.type == "Merge" and len(inputs) == 3:
+                inputs = inputs[:2] + [None] * 6 + [inputs[2]]
+            for slot, src in enumerate(inputs):
                 if src is None or slot >= len(n.inputs):
                     continue
                 s = created.get(src)

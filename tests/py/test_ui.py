@@ -11,7 +11,8 @@ if sys.platform.startswith("linux") and not os.environ.get("DISPLAY") and not os
 pytest.importorskip("pytestqt")
 
 from PySide6.QtCore import QPoint, Qt  # noqa: E402
-from PySide6.QtGui import QSurfaceFormat  # noqa: E402
+from PySide6.QtCore import QEvent, QPointF  # noqa: E402
+from PySide6.QtGui import QMouseEvent, QSurfaceFormat  # noqa: E402
 from vertexcomp import _vccore as vc  # noqa: E402
 
 
@@ -133,6 +134,48 @@ def test_roto_draw_tool(win, qtbot):
     shapes = ro.roto_shapes()
     assert len(shapes) == 1 and shapes[0].closed and len(shapes[0].points_at(1.0)) == 3
     s.undo.undo()
+
+
+def test_transform_viewer_gizmo_moves_node(win):
+    node = win.s.create_node("Transform", connect_selected=False)
+    win.s.set_knob(node, "center", [960, 540])
+    win.s.select([node])
+    win.viewer.transform_btn.setChecked(True)
+    tool = win.viewer.gl.tool
+    assert tool is not None
+
+    gl = win.viewer.gl
+    x, y = gl.to_screen(960, 540)
+    start = QPointF(x, y)
+    end = QPointF(x + 20, y + 10)
+    press = QMouseEvent(QEvent.Type.MouseButtonPress, start, start, Qt.MouseButton.LeftButton,
+                        Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    move = QMouseEvent(QEvent.Type.MouseMove, end, end, Qt.MouseButton.NoButton,
+                       Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    release = QMouseEvent(QEvent.Type.MouseButtonRelease, end, end, Qt.MouseButton.LeftButton,
+                          Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier)
+    assert tool.press(press)
+    assert tool.move(move)
+    assert tool.release(release)
+    assert node.get("translate", win.s.frame) == [40, 20]
+
+
+def test_visual_subgroup_collapses_and_persists(win):
+    a = win.s.create_node("Constant", connect_selected=False)
+    b = win.s.create_node("Grade", connect_selected=False)
+    win.s.select([a, b])
+    win.graph.add_subgroup()
+    group = win.s.project.backdrops[-1]
+    assert group.group and set(group.members) == {a.name, b.name}
+
+    win.graph._toggle_subgroup(group)
+    assert group.collapsed
+    assert not win.graph.node_items[a.name].isVisible()
+    assert not win.graph.node_items[b.name].isVisible()
+
+    backdrop = win.s.project.to_dict()["backdrops"][-1]
+    assert backdrop["group"] and backdrop["collapsed"]
+    assert set(backdrop["members"]) == {a.name, b.name}
 
 
 def test_tab_creator_and_graph_hotkeys(win, qtbot):

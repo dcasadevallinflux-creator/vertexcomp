@@ -50,7 +50,9 @@ class TransformTool:
         top_vec = top - center_screen
         length = math.hypot(top_vec.x(), top_vec.y()) or 1.0
         rotate_handle = top + QPointF(top_vec.x() / length * 24, top_vec.y() / length * 24)
-        box = QRectF(screen[0], screen[2]).normalized()
+        box = QRectF(min(p.x() for p in screen), min(p.y() for p in screen),
+                     max(p.x() for p in screen) - min(p.x() for p in screen),
+                     max(p.y() for p in screen) - min(p.y() for p in screen))
         return node, center_screen, screen, rotate_handle, box
 
     def paint(self, painter: QPainter):

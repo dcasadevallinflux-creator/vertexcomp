@@ -67,14 +67,17 @@ On Linux CI without a display, run the UI tests under `xvfb-run`.
 
 * **Node graph** (bottom): `Tab` opens a fuzzy node search (`gau` + Enter = GaussianBlur, connected to the
   selection). Hotkeys: M Merge, B Blur, C ColorCorrect, G Grade, R Read, W Write, T Transform, O Roto,
-  H Shuffle, K Keyer, `.` Dot, D disable, N rename, Ctrl+B backdrop, L align, Ctrl+C/V (as text, pasteable
-  into a text editor and back), Ctrl+D duplicate. `1`–`9` send the selected node to a viewer input; Ctrl+click
-  views a node. Drag from an output to empty space to create and connect a node; drag an arrow end to re-wire or
-  detach. Right-click a Read: *Create Shuffle per layer*.
+  H Shuffle, K Keyer, `.` Dot, D disable, N rename, Ctrl+B backdrop, Ctrl+G subgroup selected nodes, L align,
+  Ctrl+C/V (as text, pasteable into a text editor and back), Ctrl+D duplicate. `1`–`9` send the selected node to
+  a viewer input; Ctrl+click views a node. Drag from an output to empty space to create and connect a node; drag
+  an arrow end to re-wire or detach. Right-click a subgroup to collapse or expand it. Right-click a Read:
+  *Create Shuffle per layer*.
 * **Viewer**: wheel zooms at the cursor (1/64x to 100000x), middle-drag or Alt-drag pans, F fits. Exposure,
   gamma and gain fields scrub with a drag; `[` and `]` step exposure. Layer menu lists every AOV at the viewed
   node; Shift+R/G/B/A/Y/C switch channels. The pixel grid appears at high zoom, numeric values inside pixels at
   extreme zoom. Ctrl+drag samples an area (min/max/mean). Zebra, overlays, ROI and A/B wipe are in the bar.
+  Select a Transform node and enable *Transform* in the viewer bar to move, scale, or rotate it with on-image
+  handles. Roto already includes its own viewer editing tools.
 * **Timeline**: Space play/stop, Left/Right step, Shift+Left/Right jump between keys, Home/End. Real-time
   playback skips frames that are not ready; *every frame* waits. The green bar marks cached frames.
 * **Properties**: every animatable knob has a key button (click: set/remove key at this frame; right-click:

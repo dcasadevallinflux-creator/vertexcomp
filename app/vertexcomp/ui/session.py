@@ -262,6 +262,10 @@ class Session(QObject):
                             except RuntimeError:
                                 self.project.graph.connect(other, i, None)
                 self.project.remove(n)
+            removed = {n.name for n in nodes}
+            for backdrop in self.project.backdrops:
+                if backdrop.group:
+                    backdrop.members = [name for name in backdrop.members if name not in removed]
             for idx in sorted(backdrops, reverse=True):
                 del self.project.backdrops[idx]
 
