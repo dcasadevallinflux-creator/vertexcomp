@@ -224,7 +224,8 @@ VC_REGISTER_OP(OpDesc{"Distortion", "Transform", "Apply radial barrel or pincush
                       1, maker<Distortion>()});
 
 float channelAt(const Image& img, const std::string& channel, int x, int y) {
-    if (!img.bbox().contains(x, y)) return 0.0f;
+    const Box& bbox = img.bbox();
+    if (x < bbox.x0 || x >= bbox.x1 || y < bbox.y0 || y >= bbox.y1) return 0.0f;
     const float* plane = img.plane(channel);
     if (!plane) return 0.0f;
     return plane[size_t(y - img.bbox().y0) * img.bbox().w() + x - img.bbox().x0];
