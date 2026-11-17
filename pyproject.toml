@@ -1,0 +1,45 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "nanobind>=2.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "vertexcomp"
+version = "0.1.0"
+description = "Node-based compositing application: C++ core, PySide6 UI"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["PySide6>=6.6", "numpy>=1.24", "imageio-ffmpeg>=0.4.9"]
+
+[project.optional-dependencies]
+test = ["pytest>=7", "pytest-qt>=4", "scipy>=1.10"]
+
+[project.scripts]
+vertexcomp-render = "vertexcomp.render_cli:main"
+
+[project.gui-scripts]
+vertexcomp = "vertexcomp.main:main"
+
+[tool.scikit-build]
+cmake.version = ">=3.18"
+cmake.build-type = "Release"
+wheel.packages = ["app/vertexcomp"]
+sdist.exclude = ["build", "tests/data/generated"]
+
+[tool.scikit-build.cmake.define]
+VC_BUILD_TESTS = "OFF"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/py"]
+
+[tool.ruff]
+line-length = 160
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+ignore = ["E731", "B023", "B008", "B905", "E741"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = false

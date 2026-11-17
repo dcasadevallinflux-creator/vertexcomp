@@ -1,0 +1,41 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python: ["3.11", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "${{ matrix.python }}"}
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libxcb-cursor0 libegl1 libgl1-mesa-dri libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-randr0 libxcb-render-util0 libxcb-image0
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .[test] ruff
+      - name: C++ tests
+        run: |
+          python -m pip install nanobind
+          cmake -S . -B build-tests -DVC_BUILD_TESTS=ON -DVC_BUILD_PYTHON=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-tests --config Release -j 4
+          ctest --test-dir build-tests -C Release --output-on-failure
+      - name: Python tests (Windows)
+        if: runner.os == 'Windows'
+        run: python -m pytest tests/py -q -p no:cacheprovider --rootdir . --import-mode=importlib
+        env: {VC_INSTALLED: "1"}
+      - name: Python tests (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a -s "-screen 0 1700x1100x24" python -m pytest tests/py -q -p no:cacheprovider
+        env: {VC_INSTALLED: "1"}
+      - name: Lint
+        run: ruff check app tools tests
+      - name: Wheel
+        run: python -m pip wheel . -w dist --no-deps
+      - uses: actions/upload-artifact@v4
+        with: {name: "wheel-${{ matrix.os }}-${{ matrix.python }}", path: dist/*.whl}
