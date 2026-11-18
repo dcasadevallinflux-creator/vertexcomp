@@ -6,3 +6,4 @@ app/vertexcomp/_vccore*.so
 app/vertexcomp/_vccore*.pyd
 tests/data/generated/
 .venv/
+.venv-ai/

@@ -1,10 +1,39 @@
 // Constant, Ramp, CheckerBoard, Rectangle, Noise (including film grain).
 #include "common.h"
+#include "../../third_party/stb_image.h"
+
+#include <cstdint>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace vc::ops {
 namespace {
 
 const ChannelList kRGBA{"rgba.red", "rgba.green", "rgba.blue", "rgba.alpha"};
+
+std::vector<unsigned char> decodeBase64(const std::string& value) {
+    static const std::string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::vector<unsigned char> out;
+    uint32_t buffer = 0;
+    int bits = -8;
+    for (unsigned char ch : value) {
+        if (ch == '=') break;
+        const size_t index = alphabet.find(char(ch));
+        if (index == std::string::npos) continue;
+        buffer = (buffer << 6) | uint32_t(index);
+        bits += 6;
+        if (bits >= 0) {
+            out.push_back(static_cast<unsigned char>((buffer >> bits) & 0xff));
+            bits -= 8;
+        }
+    }
+    return out;
+}
+
+float srgbToLinear(float value) {
+    return value <= 0.04045f ? value / 12.92f : std::pow((value + 0.055f) / 1.055f, 2.4f);
+}
 
 Info generatorInfo(const Params& p) {
     Info i;
@@ -16,6 +45,15 @@ Info generatorInfo(const Params& p) {
 }
 
 KnobDef formatKnob() { return K::wh("format", "format", 1920, 1080, 1, 8192, "Output resolution in pixels"); }
+
+std::vector<KnobDef> textKnobs() {
+    auto size = K::flt("size", "size", 64, 1, 1024);
+    auto color = K::color("color", "color", {1, 1, 1, 1});
+    auto position = K::xy("position", "position", 100, 100);
+    size.animatable = color.animatable = position.animatable = false;
+    return {K::text("text", "text", "Text"), K::str("font", "font", "Arial"), size, color, position,
+            formatKnob(), K::str("bitmap", "bitmap", "", "Generated text bitmap")};
+}
 
 // ------------------------------------------------------------ Constant
 class Constant : public Op {
@@ -36,6 +74,62 @@ public:
 VC_REGISTER_OP(OpDesc{"Constant", "Image", "Solid colour over a format.", {}, 0,
                       {K::color("color", "color", {0, 0, 0, 0}, 0, 1, "Premultiplied RGBA"), formatKnob()}, 1,
                       maker<Constant>()});
+
+class Text : public Op {
+public:
+    Info info(Eval& ev, const Params& p) const override {
+        Info i;
+        if (ev.connected(0)) i = ev.inputInfo(0);
+        else {
+            i.format.w = std::max(1, int(p.f("format", 0)));
+            i.format.h = std::max(1, int(p.f("format", 1)));
+            i.bbox = Box{};
+        }
+        i.bbox = i.bbox.unite(i.format.box());
+        i.channels = unite(i.channels, kRGBA);
+        return i;
+    }
+
+    ImagePtr render(Eval& ev, const Params& p, const Box& roi, const ChannelList& chans) const override {
+        ImagePtr in = ev.input(0, roi, chans);
+        auto out = copyOf(*in, roi, chans);
+        const std::string& encoded = p.s("bitmap");
+        if (encoded.empty()) return out;
+
+        const auto bytes = decodeBase64(encoded);
+        if (bytes.empty()) throw std::runtime_error("Text node bitmap is not valid base64 PNG data");
+        int width = 0, height = 0, components = 0;
+        unsigned char* pixels = stbi_load_from_memory(bytes.data(), int(bytes.size()), &width, &height, &components, 4);
+        if (!pixels) throw std::runtime_error("Text node bitmap could not be decoded");
+
+        const int ox = int(std::lround(p.f("position", 0)));
+        const int oy = int(std::lround(p.f("position", 1)));
+        const Box overlap = Box{ox, oy, ox + width, oy + height}.intersect(roi);
+        for (int y = overlap.y0; y < overlap.y1; ++y) {
+            for (int x = overlap.x0; x < overlap.x1; ++x) {
+                const size_t index = (size_t(y - oy) * size_t(width) + size_t(x - ox)) * 4;
+                const float alpha = float(pixels[index + 3]) / 255.0f;
+                const size_t outIndex = size_t(y - roi.y0) * size_t(roi.w()) + size_t(x - roi.x0);
+                const unsigned char values[3] = {pixels[index], pixels[index + 1], pixels[index + 2]};
+                const char* names[3] = {"rgba.red", "rgba.green", "rgba.blue"};
+                for (int c = 0; c < 3; ++c) {
+                    if (float* plane = out->plane(names[c])) {
+                        const float color = srgbToLinear(float(values[c]) / 255.0f);
+                        plane[outIndex] = color * alpha + plane[outIndex] * (1.0f - alpha);
+                    }
+                }
+                if (float* plane = out->plane("rgba.alpha"))
+                    plane[outIndex] = alpha + plane[outIndex] * (1.0f - alpha);
+            }
+        }
+        stbi_image_free(pixels);
+        return out;
+    }
+};
+
+VC_REGISTER_OP(OpDesc{"Text", "Draw", "Render text over the input image.", {"bg"}, 0,
+                      textKnobs(),
+                      1, maker<Text>()});
 
 // ------------------------------------------------------------ Ramp
 class Ramp : public Op {

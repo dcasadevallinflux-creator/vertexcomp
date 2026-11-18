@@ -13,14 +13,44 @@ NOTES = {
             "invert, feather (signed distance falloff, smooth or linear) plus per-point feather, edge blur, motion "
             "blur samples/shutter and its own animated transform. Auto-key off: editing a frame without a key "
             "offsets all keys; auto-key on: edits create a key at the current frame.",
+    "Paint": "Select the node and draw in the viewer with the left mouse button. Brush size and colour are "
+             "configured in the node properties; each stroke is saved and can be undone.",
+    "Text": "Text is rasterized with the selected system font and composited over the input. Position is the "
+            "image-space top-left of the rendered text.",
     "Read": "Sequences are detected from any file of the sequence. Movies (MOV/MP4/MKV/AVI) decode through "
             "FFmpeg (imageio-ffmpeg); file frames are 0-based, `frame offset` maps them onto the timeline. "
             "TIFF and DPX are not supported by the built-in readers.",
     "Write": "Image sequences: EXR (half/float, ZIP/ZIPS/PIZ/none, data window = bbox, string metadata kept), "
              "PNG 8/16, JPG, TGA, BMP, HDR. Movies: MP4/MOV through FFmpeg (H.264, ProRes 422 HQ, MJPEG). Renders "
              "run in the background from the Render button, Render menu (F7) or `vertexcomp-render`.",
-    "Merge": "Inputs B (background), A (foreground), mask. Premultiplied maths: over = A + B(1-a). The photographic "
-             "modes (screen, overlay, soft/hard-light, dodge, burn) combine alpha as a + b - ab.",
+    "Merge": "Inputs B (background), A (foreground), C-H (additional foregrounds), and mask. Foregrounds are "
+             "composited in port order. Premultiplied maths: over = A + B(1-a). The photographic modes (screen, "
+             "overlay, soft/hard-light, dodge, burn) combine alpha as a + b - ab.",
+    "Vignette": "Center coordinates are normalized to the image format; radius and softness are normalized to "
+                "the image dimensions. The edge color can tint as well as darken the selected channels.",
+    "LensFlare": "Position is normalized to the image format. A point sample at the source position drives flare "
+                 "strength above the source threshold; rays and ghost elements are generated procedurally.",
+    "Distortion": "Radial k1/k2 lens coefficients remap pixels around a normalized center. Zero coefficients are "
+                  "an identity transform.",
+    "EdgeDetect": "Sobel edges are detected from the selected input channel and expanded to the requested pixel "
+                  "width. The edge matte is written to its own output channel and the line color is composited "
+                  "over the image.",
+    "Transform": "Select the node and enable the Transform button in the viewer to move, scale, and rotate with "
+                  "on-image handles.",
+    "SDXLGeneration": "Generation runs in a separate AI worker process (Settings > AI Models: Python with torch + "
+                      "diffusers, model downloads, GPU memory mode). Changing knobs never regenerates: the cached "
+                      "image is shown, flagged as out of date, until Generate is pressed again. Choosing a `speed` "
+                      "option applies its recommended steps, guidance and sampler. With the `init` input connected "
+                      "the input at the current frame is used for image-to-image with `denoise` strength. The image "
+                      "is stored inside the .vcp. `show` limits the frames on which it is output.",
+    "SDXLLightning": "See SDXLGeneration. Lightning LoRAs need Euler with trailing timesteps and guidance <= 1 "
+                     "(`timesteps = auto` does this).",
+    "LCMTurbo": "See SDXLGeneration. LCM-LoRA works best with 4-8 steps and guidance 1-2. DMD2 is licensed for "
+                "non-commercial use only.",
+    "SDXLTurbo": "See SDXLGeneration. SDXL-Turbo is trained at 512x512; image-to-image needs steps x denoise >= 1.",
+    "Versions": "Add new version stores the input at the current frame inside the project (half-float, lossless "
+                "for generations, which are referenced rather than copied). The version list under the knobs "
+                "switches the output; *live input* passes the input through. Rename with a double-click.",
 }
 
 

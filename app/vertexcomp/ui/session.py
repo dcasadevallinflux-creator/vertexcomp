@@ -13,6 +13,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QUndoCommand, QUndoStack
 
 from vertexcomp import _vccore as vc
+from vertexcomp.ai import GEN_TYPES
 from vertexcomp.project import Project, shape_from_dict, shape_to_dict
 
 
@@ -59,6 +60,9 @@ class KnobCommand(QUndoCommand):
         n = self.s.project.find(self.node)
         if n is not None:
             n.set_knob_state(self.knob, state)
+            if n.type == "Text" and self.knob in ("text", "font", "size", "color", "position"):
+                from vertexcomp.ui.text_node import update_text_bitmap
+                update_text_bitmap(n)
             self.s.node_changed(n)
 
     def redo(self):
@@ -188,7 +192,7 @@ class Session(QObject):
 
     # ------------------------------------------------------------ snapshots
     def snapshot(self) -> dict:
-        d = self.project.to_dict()
+        d = self.project.to_dict(include_blobs=False)  # blobs persist in project.blobs
         d.pop("viewer", None)
         return d
 
@@ -235,6 +239,9 @@ class Session(QObject):
                     self.project.graph.connect(n, 0, sel)
                 except RuntimeError:
                     pass
+            if op_type == "Text":
+                from vertexcomp.ui.text_node import update_text_bitmap
+                update_text_bitmap(n)
             return n
 
         n = self.structural(f"create {op_type}", make)
@@ -345,10 +352,32 @@ class Session(QObject):
     def move_nodes(self, before, after):
         self.undo.push(MoveCommand(self, before, after))
 
+    def disconnect_nodes(self, nodes):
+        names = {node.name for node in nodes}
+        if not names:
+            return
+        if not any(
+            (node.name in names and any(source is not None for source in node.inputs)) or
+            any(source is not None and source.name in names for source in node.inputs)
+            for node in self.project.nodes()
+        ):
+            return
+
+        def do():
+            for node in self.project.nodes():
+                for slot, source in enumerate(node.inputs):
+                    if node.name in names or (source is not None and source.name in names):
+                        self.project.graph.connect(node, slot, None)
+
+        self.structural("disconnect node connections", do)
+
     # ------------------------------------------------------------ knobs
-    def set_knob(self, node, knob, value, merge_key=None, comp=None):
+    def set_knob(self, node, knob, value, merge_key=None, comp=None, presets=True):
         """Set a knob from the UI. Animated knobs receive a key at the current
         frame (all components, or `comp`), static knobs change their value."""
+        if presets and node.type in GEN_TYPES and knob in ("accel", "model"):
+            from vertexcomp.ai.nodes import set_with_preset
+            return set_with_preset(self, node, knob, value)
         before = node.knob_state(knob)
         kd = node.knob_def(knob)
         if kd["animatable"] and node.is_animated(knob):
@@ -361,6 +390,9 @@ class Session(QObject):
                     node.set_key(knob, c, float(self.frame), float(vals[c]))
         else:
             node.set(knob, value)
+        if node.type == "Text" and knob in ("text", "font", "size", "color", "position"):
+            from vertexcomp.ui.text_node import update_text_bitmap
+            update_text_bitmap(node)
         after = node.knob_state(knob)
         if before != after:
             self.undo.push(KnobCommand(self, node, knob, before, after, merge_key))
@@ -389,6 +421,8 @@ class Session(QObject):
         self.node_changed(node)
 
     def set_roto(self, node, shapes, merge_key=None):
+        if node.type not in ("Roto", "Paint"):
+            raise ValueError(f"{node.name} does not support shape data")
         before = [shape_to_dict(s) for s in node.roto_shapes()]
         node.set_roto_shapes(shapes)
         after = [shape_to_dict(s) for s in shapes]

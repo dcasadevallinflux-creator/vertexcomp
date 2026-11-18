@@ -28,6 +28,7 @@ from vertexcomp.project import OP_TYPES, SchemaError, write_node_range
 from vertexcomp.settings import config_dir
 from vertexcomp.ui import theme
 from vertexcomp.ui.nodegraph import NodeGraphView
+from vertexcomp.ui.paint_tool import PaintTool
 from vertexcomp.ui.panels import CurveEditor, LayersPanel, LogPanel, ProfilerPanel, ScopesPanel, ScriptConsole
 from vertexcomp.ui.properties import PropertiesPanel, set_read_file
 from vertexcomp.ui.roto_tool import RotoTool
@@ -113,6 +114,8 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.render_bar)
         self.statusBar().addPermanentWidget(self.render_cancel)
 
+        from vertexcomp.ai.nodes import controller as ai_controller
+        self.ai = ai_controller(self.s)
         self._menus()
         self.s.selectionChanged.connect(self._selection)
         self.viewer.transformToolToggled.connect(lambda _: self._selection())
@@ -235,6 +238,14 @@ class MainWindow(QMainWindow):
         rm = mb.addMenu("Render")
         act(rm, "Render Selected Write", self._render_selected, "F7")
         act(rm, "Render All Writes", self._render_all, "Shift+F7")
+
+        am = mb.addMenu("AI")
+        act(am, "Generate Selected", self._ai_generate_selected, "Ctrl+Return",
+            "Run Generate on the selected AI nodes / add a version on selected Versions nodes")
+        am.addSeparator()
+        act(am, "Models && Settings...", self.open_ai_settings)
+        act(am, "Unload Models from RAM", self._ai_unload)
+        act(am, "Clear Caches", self._ai_clear)
 
         w = mb.addMenu("Window")
         for _title, d in self.docks.items():
@@ -469,6 +480,8 @@ class MainWindow(QMainWindow):
                 self.s.roto_state.points = set()
                 self.s.roto_tool = RotoTool(self.s, self.viewer.gl, last.name)
             tool = self.s.roto_tool
+        elif last is not None and last.type == "Paint":
+            tool = PaintTool(self.s, self.viewer.gl, last.name)
         elif last is not None and last.type == "Transform" and self.viewer.transform_btn.isChecked():
             tool = TransformTool(self.s, self.viewer.gl, last.name)
         else:
@@ -533,6 +546,28 @@ class MainWindow(QMainWindow):
         for n in self.s.project.nodes():
             if n.type == "Write" and not n.disabled:
                 self.render_write(n)
+
+    # ------------------------------------------------------------ AI
+    def _ai_generate_selected(self):
+        from vertexcomp.ai import GEN_TYPES
+        from vertexcomp.ai.nodes import add_version, generate
+        for n in list(self.s.selected):
+            if n.type in GEN_TYPES:
+                generate(self.s, n)
+            elif n.type == "Versions":
+                add_version(self.s, n)
+
+    def open_ai_settings(self):
+        self.open_settings()
+        from vertexcomp.ui.settings_window import SECTIONS
+        self.settings_win.list.setCurrentRow([s for _, s in SECTIONS].index("ai"))
+
+    def _ai_unload(self):
+        self.ai.mgr.unload()
+        self.s.log("AI models unloaded from RAM/VRAM")
+
+    def _ai_clear(self):
+        self.s.log(self.ai.mgr.clear_caches())
 
     # ------------------------------------------------------------ settings
     def open_settings(self):
@@ -606,6 +641,7 @@ class MainWindow(QMainWindow):
             return
         for j in self.jobs:
             j.cancel()
+        self.ai.mgr.stop(timeout=3.0)
         self.save_layout()
         self.settings.save()
         self.viewer.shutdown()

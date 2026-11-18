@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from vertexcomp import _vccore as vc
 from vertexcomp import movie
+from vertexcomp.ai import AI_TYPES, HIDDEN_KNOBS
 from vertexcomp.project import OP_TYPES
 from vertexcomp.ui import theme
 from vertexcomp.ui.widgets import IconButton, NumberWithSlider, ScrubField, Swatch
@@ -403,6 +404,10 @@ class KnobRow(QWidget):
             self.s.node_changed(self.node)
         elif self.name == "render":
             self.panel.renderRequested.emit(self.node)
+        elif self.node.type in AI_TYPES:
+            from vertexcomp.ai.nodes import handle_button
+            handle_button(self.s, self.node, self.name)
+            self.panel.refresh_node(self.node)
 
     # ------------------------------------------------------------ animation
     def toggle_key(self):
@@ -534,6 +539,10 @@ class NodeEditor(QFrame):
         self.rows: list[KnobRow] = []
         groups: dict[str, list] = {}
         for kd in OP_TYPES[node.type]["knobs"]:
+            if node.type == "Text" and kd["name"] == "bitmap":
+                continue
+            if node.type in AI_TYPES and kd["name"] in HIDDEN_KNOBS:
+                continue
             groups.setdefault(kd["group"], []).append(node.knob_def(kd["name"]))
         body = QVBoxLayout()
         body.setContentsMargins(4, 2, 4, 2)
@@ -552,6 +561,16 @@ class NodeEditor(QFrame):
             from vertexcomp.ui.roto_tool import RotoPanel
             self.roto = RotoPanel(self.s, node)
             lay.addWidget(self.roto)
+        self.ai_panel = None
+        if node.type in AI_TYPES:
+            from vertexcomp.ai.nodes import make_panel
+            self.ai_panel = make_panel(self.s, node)
+            if self.ai_panel is not None:
+                lay.addWidget(self.ai_panel)
+        if node.type == "Paint":
+            clear = QPushButton("Clear strokes")
+            clear.clicked.connect(lambda: self.s.set_roto(node, []))
+            lay.addWidget(clear)
         if node.type == "Read":
             self.meta = QLabel("")
             self.meta.setFont(theme.mono_font(8))
@@ -582,12 +601,13 @@ class NodeEditor(QFrame):
                 self.meta.setText(str(ex))
         if hasattr(self, "roto"):
             self.roto.refresh()
+        if self.ai_panel is not None:
+            self.ai_panel.refresh()
 
 
 class PropertiesPanel(QScrollArea):
     renderRequested = Signal(object)
     curveRequested = Signal(object, str)
-    MAX = 4
 
     def __init__(self, session, parent=None):
         super().__init__(parent)
@@ -605,6 +625,7 @@ class PropertiesPanel(QScrollArea):
         session.graphChanged.connect(self.rebuild)
         session.nodeChanged.connect(self.refresh_node)
         session.frameChanged.connect(lambda f: self.refresh_all())
+        session.settings.on_change(self._setting_changed)
         self._pending = set()
         self._t = QTimer(self)
         self._t.setSingleShot(True)
@@ -625,7 +646,16 @@ class PropertiesPanel(QScrollArea):
         ed = NodeEditor(self, node)
         self.editors[node.name] = ed
         self.order.insert(0, node.name)
-        while len(self.order) > self.MAX:
+        self._trim()
+
+    def _setting_changed(self, section, key, value):
+        if section == "nodegraph" and key == "max_properties":
+            self._trim()
+            self._relayout()
+
+    def _trim(self):
+        limit = max(1, int(self.s.settings.get("nodegraph", "max_properties")))
+        while len(self.order) > limit:
             old = self.order.pop()
             w = self.editors.pop(old)
             w.setParent(None)

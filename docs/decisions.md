@@ -67,3 +67,12 @@ traversed a half-built dict and crashed the interpreter (reproduced, backtrace i
 ## Viewer default channel view
 
 The viewer opens in `rgb` (like Nuke). `rgba` composites over the checkerboard using alpha.
+
+## AI generation in a separate process
+
+The SDXL nodes run diffusers in a worker process started with a configurable interpreter instead of importing
+torch into the app: PyTorch CUDA wheels lag new Python releases (the app runs on 3.15), a crash or out-of-memory in
+the model cannot take the compositor down, and stopping the process is the only reliable way to give back all RAM
+and VRAM (*Unload models from RAM*). Results come back as PNG files and are stored in the project, so renders,
+`vertexcomp-render` and reopening a project never need the AI environment. Downloads use plain HTTPS against the
+Hugging Face resolve URLs (resumable), so the app itself needs no `huggingface_hub`.

@@ -178,6 +178,72 @@ def test_visual_subgroup_collapses_and_persists(win):
     assert set(backdrop["members"]) == {a.name, b.name}
 
 
+def test_paint_and_text_properties_and_jitter_disconnect(win, qtbot):
+    source = win.s.create_node("Constant", connect_selected=False)
+    win.s.set_knob(source, "format", [64, 48])
+    paint = win.s.create_node("Paint")
+    win.s.set_knob(paint, "size", 8)
+    win.s.set_knob(paint, "color", [0, 1, 0, 1])
+    from vertexcomp.ui.paint_tool import PaintTool
+    gl = win.viewer.gl
+    gl.cx, gl.cy, gl.zoom = 32, 24, 4
+    start = QPointF(*gl.to_screen(12, 24))
+    end = QPointF(*gl.to_screen(40, 24))
+    paint_tool = PaintTool(win.s, gl, paint.name)
+    press = QMouseEvent(QEvent.Type.MouseButtonPress, start, start, Qt.MouseButton.LeftButton,
+                        Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    move = QMouseEvent(QEvent.Type.MouseMove, end, end, Qt.MouseButton.NoButton,
+                       Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    release = QMouseEvent(QEvent.Type.MouseButtonRelease, end, end, Qt.MouseButton.LeftButton,
+                          Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier)
+    assert paint_tool.press(press) and paint_tool.move(move) and paint_tool.release(release)
+    painted, _, _ = win.s.project.engine.render(paint, 1, (0, 0, 64, 48),
+                                                 ["rgba.red", "rgba.green", "rgba.blue", "rgba.alpha"])
+    assert painted[1, 24, 24] > 0.5
+    text = win.s.create_node("Text")
+    win.s.set_knob(text, "text", "Hello")
+    win.s.set_knob(text, "size", 20)
+    win.s.set_knob(text, "position", [5, 5])
+    assert text.get("bitmap")
+    text_image, _, _ = win.s.project.engine.render(text, 1, (0, 0, 64, 48),
+                                                   ["rgba.red", "rgba.green", "rgba.blue", "rgba.alpha"])
+    assert text_image[3].max() > 0.5
+
+    win.s.select([source, paint, text])
+    win.settings.set("nodegraph", "max_properties", 2)
+    assert len(win.props.editors) == 2
+    win.settings.set("nodegraph", "max_properties", 4)
+    saved = win.s.project.to_dict()
+    saved_paint = next(node for node in saved["nodes"] if node["type"] == "Paint")
+    saved_text = next(node for node in saved["nodes"] if node["type"] == "Text")
+    assert saved_paint["roto"] and saved_text["knobs"]["bitmap"]["value"]
+    from vertexcomp.project import Project
+    restored = Project()
+    restored.paste(saved)
+    assert len(restored.find(paint.name).roto_shapes()) == 1
+    assert restored.find(text.name).get("bitmap") == text.get("bitmap")
+
+    downstream = win.s.create_node("Grade", connect_selected=False)
+    win.s.connect(paint, 0, source)
+    win.s.connect(downstream, 0, paint)
+    win.graph._move_samples = {
+        paint.name: [(0.0, 0, 0), (0.1, 40, 0), (0.2, 0, 0), (0.3, 40, 0), (0.4, 0, 0)]
+    }
+    assert [n.name for n in win.graph._jittered_nodes()] == [paint.name]
+    win.graph._move_samples = {paint.name: [(0.0, 0, 0), (0.1, 40, 0), (0.2, 80, 0), (0.3, 120, 0)]}
+    assert not win.graph._jittered_nodes()
+    win.graph._move_samples = {
+        paint.name: [(0.0, 0, 0), (0.1, 40, 0), (0.2, 0, 0), (0.3, 40, 0), (0.4, 0, 0)]
+    }
+    win.s.disconnect_nodes([paint])
+    assert paint.inputs[0] is None and downstream.inputs[0] is None
+    win.s.undo.undo()
+    paint = win.s.project.find(paint.name)
+    source = win.s.project.find(source.name)
+    downstream = win.s.project.find(downstream.name)
+    assert paint.inputs[0].name == source.name and downstream.inputs[0].name == paint.name
+
+
 def test_tab_creator_and_graph_hotkeys(win, qtbot):
     g = win.graph
     g.setFocus()

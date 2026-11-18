@@ -124,7 +124,7 @@ Node::Node(Graph* g, const OpDesc* desc, uint64_t id) : graph_(g), desc_(desc), 
         }
         knobs[kd.name] = kv;
     }
-    if (desc->type == "Roto") roto = std::make_shared<RotoData>();
+    if (desc->type == "Roto" || desc->type == "Paint") roto = std::make_shared<RotoData>();
 }
 
 const KnobDef* Node::knobDef(const std::string& k) const {

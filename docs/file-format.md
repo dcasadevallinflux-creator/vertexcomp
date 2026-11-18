@@ -41,6 +41,11 @@ UTF-8 JSON. Unknown keys are ignored. Example (abridged):
   same length.
 * Relative paths: *File > Save As (relative paths)* stores Read/Write paths relative to the project file; on load
   relative paths are resolved against the project's directory.
+* `blobs` (optional): images stored inside the project, keyed by content id: `{"kind": "png" | "npz", "x0", "y0",
+  "data": base64}`. `png` is an 8-bit sRGB generation from the AI nodes; `npz` is a NumPy archive with a half-float
+  `rgba` (H, W, 4) premultiplied linear array placed at (`x0`, `y0`). Nodes refer to them through the `image` knob
+  (AI nodes, Versions) and the JSON `versions` knob (Versions). Only referenced blobs are written. Older builds
+  ignore the key. The schema number is unchanged because nothing else moved.
 
 ## Versioning
 

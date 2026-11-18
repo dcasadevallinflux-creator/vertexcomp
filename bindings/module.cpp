@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstring>
 
+#include "../core/src/ops/blobs.h"
 #include "../core/src/ops/io_ops.h"
 #include "vc/color.h"
 #include "vc/expr.h"
@@ -413,14 +414,14 @@ NB_MODULE(_vccore, m) {
         })
         .def("roto_shapes", [](Node& n) {
             std::lock_guard<std::recursive_mutex> lk(gm(n));
-            if (!n.roto) throw Error(n.name + " is not a Roto node");
+            if (!n.roto) throw Error(n.name + " does not store shape data");
             return n.roto->shapes;
         })
         .def("set_roto_shapes", [](Node& n, const std::vector<RotoShape>& shapes) {
             auto d = std::make_shared<RotoData>();
             d->shapes = shapes;
             std::lock_guard<std::recursive_mutex> lk(gm(n));
-            if (!n.roto) throw Error(n.name + " is not a Roto node");
+            if (!n.roto) throw Error(n.name + " does not store shape data");
             n.roto = d;
         });
 
@@ -723,6 +724,31 @@ NB_MODULE(_vccore, m) {
         out["vectorscope"] = makeArray(std::move(vec), 256, 256, 1);
         return out;
     }, "image"_a, "width"_a = 256, "exposure"_a = 0.0f);
+
+    // ---------------------------------------------------------------- image blobs (AI / Versions)
+    m.def("set_image_blob", [](const std::string& id, nb::ndarray<float, nb::ndim<3>, nb::c_contig> arr, int x0, int y0) {
+        // (H, W, C) premultiplied linear float; C = 1..4 mapped to rgba.
+        int H = int(arr.shape(0)), W = int(arr.shape(1)), C = int(arr.shape(2));
+        if (C < 1 || C > 4) throw nb::value_error("image blob needs 1-4 channels");
+        ChannelList ch{"rgba.red", "rgba.green", "rgba.blue", "rgba.alpha"};
+        if (C < 4) ch.resize(std::max(3, C));
+        auto img = std::make_shared<Image>(Box{x0, y0, x0 + W, y0 + H}, ch);
+        const float* src = arr.data();
+        {
+            nb::gil_scoped_release r;
+            for (int c = 0; c < int(ch.size()); ++c) {
+                float* d = img->plane(c);
+                const int sc = std::min(c, C - 1);
+                for (size_t i = 0; i < size_t(W) * H; ++i) d[i] = src[i * C + sc];
+            }
+        }
+        ops::setImageBlob(id, img);
+    }, "id"_a, "array"_a, "x0"_a = 0, "y0"_a = 0);
+    m.def("has_image_blob", [](const std::string& id) { return ops::imageBlob(id) != nullptr; });
+    m.def("remove_image_blob", &ops::removeImageBlob);
+    m.def("clear_image_blobs", &ops::clearImageBlobs);
+    m.def("image_blob_ids", &ops::imageBlobIds);
+    m.def("image_blob_bytes", &ops::imageBlobBytes);
 
     m.def("set_movie_provider", [](nb::object info, nb::object frame) {
         if (!gMovie) gMovie = new MovieCallbacks();

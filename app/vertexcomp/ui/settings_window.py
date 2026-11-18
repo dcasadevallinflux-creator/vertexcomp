@@ -34,6 +34,7 @@ from vertexcomp.ui import theme
 SECTIONS = [
     ("General", "general"), ("Performance", "performance"), ("Color Management", "color"), ("Viewer", "viewer"),
     ("Node Graph", "nodegraph"), ("Hotkeys", "hotkeys"), ("Appearance", "appearance"), ("Paths & Plugins", "paths"),
+    ("AI Models", "ai"),
 ]
 
 CHOICES = {
@@ -54,7 +55,8 @@ LABELS = {
     "show_values": "print values at extreme zoom", "zebra_threshold": "zebra threshold",
     "nearest_zoom": "nearest filtering from zoom", "overlay_color": "overlay colour", "bbox_color": "bbox colour",
     "edge_style": "edge style", "snap_to_grid": "snap to grid", "grid_size": "grid size", "font_size": "font size",
-    "autoconnect": "auto-connect new nodes", "theme": "theme", "ui_scale": "UI scale (restart)",
+    "autoconnect": "auto-connect new nodes", "max_properties": "maximum open property panels",
+    "theme": "theme", "ui_scale": "UI scale (restart)",
     "read_dir": "default read directory", "write_dir": "default write directory",
     "plugin_dirs": "plugin directories (one per line)",
 }
@@ -79,7 +81,7 @@ class SettingsWindow(QWidget):
         self.rows = {}  # (section, key) -> label widget
         for title, sec in SECTIONS:
             self.list.addItem(title)
-            page = self._hotkeys_page() if sec == "hotkeys" else self._page(sec)
+            page = self._make_page(sec)
             self.pages[sec] = page
             self.stack.addWidget(page)
         self.list.currentRowChanged.connect(self.stack.setCurrentIndex)
@@ -101,6 +103,16 @@ class SettingsWindow(QWidget):
         lay = QHBoxLayout(self)
         lay.addLayout(left)
         lay.addLayout(right, 1)
+
+    def _make_page(self, sec):
+        if sec == "hotkeys":
+            return self._hotkeys_page()
+        if sec == "ai":
+            from vertexcomp.ui.ai_settings import AISettingsPage
+            page = AISettingsPage(self.st, on_change=lambda s, k: self.changed.emit(s, k))
+            self.rows.update(page.rows)
+            return page
+        return self._page(sec)
 
     def _set(self, sec, key, value):
         self.st.set(sec, key, value)
@@ -127,7 +139,10 @@ class SettingsWindow(QWidget):
                 ed.toggled.connect(lambda v, s=sec, k=key: self._set(s, k, v))
             elif isinstance(default, int):
                 ed = QSpinBox()
-                ed.setRange(0, 100000)
+                if (sec, key) == ("nodegraph", "max_properties"):
+                    ed.setRange(1, 100)
+                else:
+                    ed.setRange(0, 100000)
                 ed.setValue(int(val))
                 ed.valueChanged.connect(lambda v, s=sec, k=key: self._set(s, k, v))
             elif isinstance(default, float):
@@ -280,7 +295,7 @@ class SettingsWindow(QWidget):
         self.st.save()
         old = self.pages[sec]
         idx = self.stack.indexOf(old)
-        page = self._hotkeys_page() if sec == "hotkeys" else self._page(sec)
+        page = self._make_page(sec)
         self.stack.insertWidget(idx, page)
         self.stack.removeWidget(old)
         old.deleteLater()

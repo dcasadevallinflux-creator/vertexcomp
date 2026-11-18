@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import time
 
 from PySide6.QtCore import QLineF, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QAction, QColor, QCursor, QFont, QKeySequence, QPainter, QPainterPath, QPen, QPolygonF
@@ -433,6 +434,7 @@ class NodeGraphView(QGraphicsView):
         self._pan = None
         self._wire = None  # (kind, item, slot, temp path item)
         self._move_start = None
+        self._move_samples = {}
         self._sync_sel = False
         self.creator = CreateMenu(self)
         self.creator.chosen.connect(self._create_from_menu)
@@ -726,6 +728,11 @@ class NodeGraphView(QGraphicsView):
                     return
             self._move_start = {name: (i.pos().x(), i.pos().y(), "node") for name, i in self.node_items.items()}
             self._move_start.update({str(b.index): (b.bd.x, b.bd.y, "bd") for b in self.backdrop_items})
+            started = time.monotonic()
+            self._move_samples = {
+                name: [(started, x, y)]
+                for name, (x, y, kind) in self._move_start.items() if kind == "node"
+            }
         super().mousePressEvent(e)
 
     def _start_wire(self, kind, item, slot, sp, detach=None):
@@ -759,6 +766,46 @@ class NodeGraphView(QGraphicsView):
             self._update_wire(self.mapToScene(e.position().toPoint()))
             return
         super().mouseMoveEvent(e)
+        self._record_move_sample()
+
+    def _record_move_sample(self):
+        if self._move_start is None:
+            return
+        now = time.monotonic()
+        for name, item in self.node_items.items():
+            path = self._move_samples.get(name)
+            if path is None:
+                continue
+            point = (now, item.pos().x(), item.pos().y())
+            if (point[1], point[2]) != (path[-1][1], path[-1][2]):
+                path.append(point)
+                if len(path) > 100:
+                    del path[1]
+
+    def _jittered_nodes(self):
+        grid = float(self.s.settings.get("nodegraph", "grid_size"))
+        result = []
+        for name, samples in self._move_samples.items():
+            if len(samples) < 4:
+                continue
+            duration = samples[-1][0] - samples[0][0]
+            if duration <= 0 or duration > 0.8:
+                continue
+            vectors = []
+            distance = 0.0
+            for a, b in zip(samples, samples[1:]):
+                dx, dy = b[1] - a[1], b[2] - a[2]
+                length = math.hypot(dx, dy)
+                if length < grid * 0.25:
+                    continue
+                vectors.append((dx / length, dy / length))
+                distance += length
+            reversals = sum(1 for a, b in zip(vectors, vectors[1:]) if a[0] * b[0] + a[1] * b[1] < -0.5)
+            if distance >= grid * 4 and distance / duration >= grid * 5 and reversals >= 2:
+                item = self.node_items.get(name)
+                if item is not None:
+                    result.append(item.node)
+        return result
 
     def mouseReleaseEvent(self, e):
         if self._pan is not None:
@@ -818,6 +865,7 @@ class NodeGraphView(QGraphicsView):
             self.rebuild()
             return
         super().mouseReleaseEvent(e)
+        self._record_move_sample()
         if self._move_start is not None:
             after = {name: (i.pos().x(), i.pos().y(), "node") for name, i in self.node_items.items()}
             after.update({str(b.index): (b.bd.x, b.bd.y, "bd") for b in self.backdrop_items})
@@ -829,7 +877,11 @@ class NodeGraphView(QGraphicsView):
                         m = self.s.project.node_meta(n)
                         m.x, m.y = x, y
                 self.s.move_nodes(moved_before, {k: after[k] for k in moved_before})
+                jittered = self._jittered_nodes()
+                if jittered:
+                    self.s.disconnect_nodes(jittered)
             self._move_start = None
+            self._move_samples = {}
 
     def mouseDoubleClickEvent(self, e):
         it = self._item_at(e.position().toPoint())

@@ -58,9 +58,11 @@ TWEAKS = {
     "Switch": {"which": 1},
     "Premult": {},
     "Unpremult": {},
+    "Paint": {},
+    "Text": {},
 }
 
-SKIP = {"Read", "Write"}  # covered by I/O tests
+SKIP = {"Read", "Write", "SDXLGeneration", "SDXLLightning", "LCMTurbo", "SDXLTurbo", "Versions"}  # I/O and AI nodes have their own tests
 
 
 def block_stats(arr):

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from vertexcomp import PROJECT_SCHEMA, VERSION
 from vertexcomp import _vccore as vc
+from vertexcomp.ai.blobs import BlobStore, referenced_ids
 
 OP_TYPES = {o["type"]: o for o in vc.op_types()}
 
@@ -112,6 +113,7 @@ class Project:
         self.settings = ProjectSettings()
         self.viewer: dict = {}
         self.path: str = ""
+        self.blobs = BlobStore()  # images stored in the project (AI generations, Versions)
 
     # ------------------------------------------------------------ nodes
     def create(self, op_type: str, name: str = "", x: float = 0.0, y: float = 0.0):
@@ -176,7 +178,7 @@ class Project:
             d["label"] = m.label
         if n.disabled:
             d["disabled"] = True
-        if n.type == "Roto":
+        if n.type in ("Roto", "Paint"):
             d["roto"] = [shape_to_dict(s) for s in n.roto_shapes()]
         return d
 
@@ -199,10 +201,10 @@ class Project:
         m.x, m.y = float(d.get("x", 0)), float(d.get("y", 0))
         m.color = d.get("color", "")
         m.label = d.get("label", "")
-        if n.type == "Roto" and "roto" in d:
+        if n.type in ("Roto", "Paint") and "roto" in d:
             n.set_roto_shapes([shape_from_dict(s) for s in d["roto"]])
 
-    def to_dict(self, relative_to: str = "") -> dict:
+    def to_dict(self, relative_to: str = "", include_blobs: bool = True) -> dict:
         nodes = [self.node_to_dict(n) for n in self.nodes()]
         if relative_to:
             base = os.path.dirname(os.path.abspath(relative_to))
@@ -213,7 +215,7 @@ class Project:
                             e["value"] = os.path.relpath(e["value"], base).replace("\\", "/")
                         except ValueError:
                             pass  # different drive on Windows
-        return {
+        d = {
             "schema": PROJECT_SCHEMA,
             "app_version": VERSION,
             "settings": vars(self.settings),
@@ -221,11 +223,18 @@ class Project:
             "backdrops": [vars(b) for b in self.backdrops],
             "viewer": self.viewer,
         }
+        if include_blobs:
+            ids = referenced_ids(nodes)
+            if ids:
+                d["blobs"] = self.blobs.to_dict(ids)
+        return d
 
     def paste(self, data: dict, offset=(0.0, 0.0), base_dir: str = ""):
         """Create nodes from a (partial) project dict. Returns created nodes.
         Names that clash are renamed; links between pasted nodes are kept."""
         created = {}
+        if data.get("blobs"):
+            self.blobs.load_dict(data["blobs"])
         for nd in data.get("nodes", []):
             if nd.get("type") not in OP_TYPES:
                 continue
@@ -315,6 +324,7 @@ class Project:
         self.backdrops.clear()
         self.viewer = {}
         self.engine.clear_cache()
+        self.blobs.clear()
         self.path = ""
 
     # ------------------------------------------------------------ reconnect media

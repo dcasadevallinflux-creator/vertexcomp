@@ -96,6 +96,22 @@ Rebuild (`pip install .` or the CMake developer build). The node appears in the 
 properties panel with no UI code. Ops that need neighbourhoods implement `Op` directly and grow the ROI they request
 (see `filter.cpp`).
 
+## AI nodes
+
+`core/src/ops/ai.cpp` registers SDXLGeneration, SDXLLightning, LCMTurbo, SDXLTurbo and Versions. The core never
+runs a model: these ops output an image from a process-wide **blob store** (`ops/blobs.h`, bound as
+`set_image_blob` etc.) referenced by the hidden `image` knob, so evaluating them costs a copy and the cached
+generation survives any knob edit until the user presses Generate. The blob's registration serial and the
+frame-visibility (`show`) are part of the hash.
+
+`app/vertexcomp/ai/`: `blobs.py` keeps the encoded bytes (PNG / half-float NPZ) per project and writes them into
+the `.vcp`; `client.py` (`AIManager`, no Qt) downloads models from Hugging Face with resume and runs `worker.py` in a
+separate interpreter (JSON lines over stdin/stdout, events pumped on the UI thread); `worker.py` is standalone
+(torch + diffusers only) and holds one SDXL pipeline, its img2img twin sharing the modules, and one speed LoRA,
+with model or sequential CPU offload for low VRAM. Ending the worker is how models are unloaded from RAM.
+`nodes.py` builds requests from knobs, applies speed presets and implements Versions; `ui/ai_settings.py` is the
+settings page.
+
 ## Dependencies
 
 | Needed for | Used | Instead of (spec) |

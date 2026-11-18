@@ -1,5 +1,8 @@
 """Core numerics against NumPy/SciPy references, I/O round trips, graph behaviour."""
+import base64
 import os
+import struct
+import zlib
 
 import numpy as np
 import pytest
@@ -38,8 +41,44 @@ def test_ops_registered():
     types = {o["type"] for o in vc.op_types()}
     for t in ["Read", "Write", "Merge", "Blur", "GaussianBlur", "Grade", "ColorCorrect", "Keyer", "Roto", "Shuffle",
               "Copy", "MergeLayer", "EdgeBlur", "EdgeDetect", "MaskBlur", "DilateErode", "Noise", "Transform",
-              "Distortion", "Vignette", "LensFlare", "TimeOffset"]:
+              "Distortion", "Vignette", "LensFlare", "TimeOffset", "Paint", "Text"]:
         assert t in types
+
+
+def _solid_png(color):
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff)
+
+    header = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)
+    return base64.b64encode(
+        b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) +
+        chunk(b"IDAT", zlib.compress(b"\x00" + bytes(color))) + chunk(b"IEND", b"")
+    ).decode("ascii")
+
+
+def test_paint_and_text_nodes_render(g):
+    graph, eng = g
+    source = graph.create("Constant")
+    source.set("format", [16, 16])
+    source.set("color", [0, 0, 0, 0])
+
+    paint = graph.create("Paint")
+    graph.connect(paint, 0, source)
+    shape = vc.RotoShape()
+    shape.color = [1, 0, 0]
+    shape.keys = {1.0: [vc.RotoPoint(4, 4), vc.RotoPoint(12, 4),
+                        vc.RotoPoint(12, 12), vc.RotoPoint(4, 12)]}
+    paint.set_roto_shapes([shape])
+    painted, _, _ = full(eng, paint)
+    assert painted[0, 8, 8] > 0.99 and painted[3, 8, 8] > 0.99
+    assert painted[3, 1, 1] == 0
+
+    text = graph.create("Text")
+    graph.connect(text, 0, source)
+    text.set("position", [7, 9])
+    text.set("bitmap", _solid_png((255, 0, 0, 255)))
+    rendered, _, _ = full(eng, text)
+    assert rendered[0, 9, 7] > 0.99 and rendered[3, 9, 7] > 0.99
 
 
 def test_schema_one_merge_inputs_migrate_to_last_mask_slot():

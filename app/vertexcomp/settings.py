@@ -49,6 +49,7 @@ DEFAULTS: dict[str, dict] = {
         "grid_size": 16,
         "font_size": 9,
         "autoconnect": True,
+        "max_properties": 4,
         "colors": {
             "Image": "#5f6f7f",
             "Color": "#7c6d4f",
@@ -59,6 +60,7 @@ DEFAULTS: dict[str, dict] = {
             "Transform": "#6a6a4e",
             "Time": "#5a7480",
             "Draw": "#7a6450",
+            "AI": "#7a5a86",
             "Other": "#5c5c5c",
         },
     },
@@ -98,6 +100,15 @@ DEFAULTS: dict[str, dict] = {
         "theme": "dark",
         "ui_scale": 1.0,
         "font_size": 9,
+    },
+    "ai": {
+        "python": "",
+        "models_dir": "",
+        "memory_mode": "low vram (model offload)",
+        "precision": "fp16",
+        "vae_tiling": True,
+        "idle_unload_minutes": 0,
+        "hf_token": "",
     },
     "paths": {
         "read_dir": "",
