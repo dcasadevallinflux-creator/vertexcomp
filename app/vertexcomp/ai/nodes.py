@@ -286,6 +286,7 @@ def generate(session, node):
             except OSError:
                 pass
         c.finish(name)
+        show_in_viewer(session, n)
         extra = f", peak VRAM {msg['peak_vram_gb']} GB" if msg.get("peak_vram_gb") else ""
         session.log(f"{name}: generated {msg.get('width')}x{msg.get('height')} in {msg.get('seconds')} s{extra}")
 
@@ -316,6 +317,18 @@ def generate(session, node):
     c.jobs[name] = Job(rid, frame)
     c.errors.pop(name, None)
     c.jobChanged.emit(name)
+
+
+def show_in_viewer(session, node):
+    """View a freshly generated image: put the node in the active viewer slot
+    and fit it once the new format arrives."""
+    if session.settings.get("ai", "view_after_generate") is False:
+        return
+    session._ai_fit_next = node.name
+    if session.viewed_node() is not node:
+        session.view_node(node)
+    else:
+        session.viewedChanged.emit()
 
 
 def cancel(session, node):

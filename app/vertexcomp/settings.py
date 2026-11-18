@@ -109,6 +109,7 @@ DEFAULTS: dict[str, dict] = {
         "vae_tiling": True,
         "idle_unload_minutes": 0,
         "hf_token": "",
+        "view_after_generate": True,
     },
     "paths": {
         "read_dir": "",

@@ -125,6 +125,11 @@ class AISettingsPage(QWidget):
         self.idle.valueChanged.connect(lambda v: self._set("idle_unload_minutes", v))
         self._row(form, "idle_unload_minutes", "unload after idle (min, 0 = never)", self.idle)
 
+        self.view_after = QCheckBox()
+        self.view_after.setChecked(self.st.get("ai", "view_after_generate") is not False)
+        self.view_after.toggled.connect(lambda v: self._set("view_after_generate", v))
+        self._row(form, "view_after_generate", "view image after generating", self.view_after)
+
         self.tok = QLineEdit(self.st.get("ai", "hf_token") or "")
         self.tok.setEchoMode(QLineEdit.EchoMode.Password)
         self.tok.setPlaceholderText("only needed for gated models")

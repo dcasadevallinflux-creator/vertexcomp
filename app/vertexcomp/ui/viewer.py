@@ -803,8 +803,10 @@ class ViewerPanel(QWidget):
                 g.format = info["format"][:2]
                 g.bbox = info["bbox"]
                 self._update_layers(info["channels"])
-                if not g.fitted_once:
+                fit_next = getattr(self.s, "_ai_fit_next", None)
+                if not g.fitted_once or fit_next == node.name:
                     g.fitted_once = True
+                    self.s._ai_fit_next = None
                     g.fit()
                 if new_node or prev_bbox != info["bbox"]:
                     roi, _, _ = self.view_params()
